@@ -1,0 +1,28 @@
+# LLM orchestration
+langgraph
+langchain
+langchain-google-genai
+langchain-mcp-adapters
+
+# Geometry (trimesh only; manifold3d is the silent boolean backend, shapely for polygons)
+trimesh
+manifold3d
+shapely
+numpy
+# trimesh's graph engines (connected_components, facets) — needed for save_image + repairs
+scipy
+networkx
+
+# Rendering (trimesh.Scene.save_image via pyglet; matplotlib fallback)
+pyglet<2
+pillow
+matplotlib
+
+# Config
+python-dotenv
+pydantic
+
+# Web backend (serves the agent to the frontend)
+fastapi
+uvicorn
+python-multipart
