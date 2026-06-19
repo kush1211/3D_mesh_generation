@@ -154,6 +154,8 @@ def _archive_run(run_id: str, filename: str, state: dict, ts: int) -> Path | Non
         shutil.copy2(config.GLB_PATH, run_dir / "mesh.glb")
     if config.RENDER_PATH.exists():
         shutil.copy2(config.RENDER_PATH, run_dir / "render.png")
+    for render_file in sorted(config.WORKDIR.glob("render_*.png")):
+        shutil.copy2(render_file, run_dir / render_file.name)
 
     meta = {
         "run_id": run_id,
@@ -195,6 +197,14 @@ async def run_mesh(run_id: str):
 @app.get("/runs/{run_id}/render.png")
 async def run_render(run_id: str):
     path = RUNS_DIR / run_id / "render.png"
+    if not path.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/runs/{run_id}/render_{idx}.png")
+async def run_render_view(run_id: str, idx: int):
+    path = RUNS_DIR / run_id / f"render_{idx}.png"
     if not path.exists():
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(path, media_type="image/png")

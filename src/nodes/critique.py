@@ -13,13 +13,43 @@ from pydantic import BaseModel
 from .. import config
 from ..llm.models import build_chat_model
 from ..llm.prompts import CRITIQUE_PROMPT, CRITIQUE_SYSTEM
-from ..render import render_mesh_views, view_labels
+from ..render import PRIMARY_VIEW_INDEX, render_mesh_views, view_labels
 
 
 class Critique(BaseModel):
     matches: bool
     reasons: str
     suggested_fixes: str = ""
+
+
+def _mesh_metrics_text(state: dict) -> str:
+    validation = state.get("validation") or {}
+    execution = state.get("execution") or {}
+    lines: list[str] = ["## Mesh metrics"]
+
+    if validation:
+        lines.append(f"- euler_number: {validation.get('euler_number')}")
+        lines.append(f"- extents (m): {validation.get('extents')}")
+        lines.append(f"- watertight: {validation.get('is_watertight')}")
+        lines.append(f"- dims_ok: {validation.get('dims_ok')}")
+        lines.append(f"- volume (m³): {validation.get('volume')}")
+
+    glb_path = execution.get("glb_path")
+    if glb_path:
+        try:
+            import trimesh
+
+            mesh = trimesh.load(glb_path, force="mesh")
+            components = mesh.split(only_watertight=False)
+            lines.append(f"- connected_components: {len(components)}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    dims = state.get("dimensions")
+    if dims:
+        lines.append(f"- expected_dimensions (m): {dims}")
+
+    return "\n".join(lines)
 
 
 async def critique_node(state: dict) -> dict:
@@ -43,6 +73,7 @@ async def critique_node(state: dict) -> dict:
     labels = view_labels()
     content: list[dict] = [
         {"type": "text", "text": CRITIQUE_PROMPT},
+        {"type": "text", "text": _mesh_metrics_text(state)},
         {"type": "text", "text": "Image 1 (original product photo):"},
         {
             "type": "image_url",
@@ -74,4 +105,5 @@ async def critique_node(state: dict) -> dict:
     feedback = None
     if not c["matches"]:
         feedback = f"Visual critique (does not match):\n{c['reasons']}\nFixes: {c['suggested_fixes']}"
-    return {"render_path": render_paths[0], "critique": c, "feedback": feedback}
+    primary_path = render_paths[PRIMARY_VIEW_INDEX]
+    return {"render_path": primary_path, "critique": c, "feedback": feedback}

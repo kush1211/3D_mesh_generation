@@ -65,6 +65,20 @@ export type RunMeta = {
   has_render: boolean;
 };
 
+export const CRITIQUE_VIEW_COUNT = 5;
+
+export const CRITIQUE_VIEW_LABELS = [
+  "front",
+  "3/4 right",
+  "3/4 left",
+  "side",
+  "elevated",
+] as const;
+
+export function runRenderViewUrl(backend: string, runId: string, index: number): string {
+  return `${backend}/runs/${runId}/render_${index}.png`;
+}
+
 export async function getHealth(backend: string): Promise<Health> {
   const res = await fetch(`${backend}/health`);
   if (!res.ok) throw new Error(`health ${res.status}`);

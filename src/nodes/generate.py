@@ -45,9 +45,14 @@ async def generate_node(state: dict) -> dict:
         tools,
         response_format=GeneratedCode,
     )
-    prompt = build_generate_prompt(state.get("feedback"))
+    previous_code = state.get("code") if state.get("iteration", 0) > 0 else None
+    prompt = build_generate_prompt(state.get("feedback"), previous_code)
 
-    print(f"[generate] iteration {iteration}: querying model (+Context7, {len(tools)} tools)")
+    retry_note = f", prev_code={len(previous_code)} chars" if previous_code else ""
+    print(
+        f"[generate] iteration {iteration}: querying model "
+        f"(+Context7, {len(tools)} tools{retry_note})"
+    )
     result = await agent.ainvoke(
         {
             "messages": [

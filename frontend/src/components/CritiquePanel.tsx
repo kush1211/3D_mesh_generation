@@ -1,14 +1,17 @@
 import type { Critique } from "@/lib/agent";
+import { CRITIQUE_VIEW_COUNT, CRITIQUE_VIEW_LABELS, runRenderViewUrl } from "@/lib/agent";
 import { Eye } from "lucide-react";
 
 export function CritiquePanel({
   critique,
   originalUrl,
-  renderUrl,
+  backend,
+  renderRunId,
 }: {
   critique: Critique | null;
   originalUrl: string | null;
-  renderUrl: string | null;
+  backend: string;
+  renderRunId: string | null;
 }) {
   return (
     <div className="p-4">
@@ -16,29 +19,42 @@ export function CritiquePanel({
         Visual critique
       </h2>
 
-      <div className="grid grid-cols-2 gap-2">
-        <figure className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/60">
-          <div className="border-b border-slate-800 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-            input
+      <figure className="mb-2 overflow-hidden rounded-md border border-slate-800 bg-slate-900/60">
+        <div className="border-b border-slate-800 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+          input
+        </div>
+        {originalUrl ? (
+          <img src={originalUrl} alt="input" className="aspect-video w-full object-contain" />
+        ) : (
+          <div className="aspect-video w-full" />
+        )}
+      </figure>
+
+      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+        mesh renders ({CRITIQUE_VIEW_COUNT} views)
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {renderRunId ? (
+          Array.from({ length: CRITIQUE_VIEW_COUNT }, (_, i) => (
+            <figure
+              key={i}
+              className="w-24 shrink-0 overflow-hidden rounded-md border border-slate-800 bg-slate-900/60"
+            >
+              <div className="truncate border-b border-slate-800 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-slate-500">
+                {CRITIQUE_VIEW_LABELS[i]}
+              </div>
+              <img
+                src={runRenderViewUrl(backend, renderRunId, i)}
+                alt={CRITIQUE_VIEW_LABELS[i]}
+                className="aspect-square w-full object-contain"
+              />
+            </figure>
+          ))
+        ) : (
+          <div className="flex aspect-square w-24 items-center justify-center rounded-md border border-dashed border-slate-800 text-slate-700">
+            <Eye className="h-5 w-5" strokeWidth={1.2} />
           </div>
-          {originalUrl ? (
-            <img src={originalUrl} alt="input" className="aspect-square w-full object-contain" />
-          ) : (
-            <div className="aspect-square w-full" />
-          )}
-        </figure>
-        <figure className="overflow-hidden rounded-md border border-slate-800 bg-slate-900/60">
-          <div className="border-b border-slate-800 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-            render
-          </div>
-          {renderUrl ? (
-            <img src={renderUrl} alt="render" className="aspect-square w-full object-contain" />
-          ) : (
-            <div className="flex aspect-square w-full items-center justify-center text-slate-700">
-              <Eye className="h-6 w-6" strokeWidth={1.2} />
-            </div>
-          )}
-        </figure>
+        )}
       </div>
 
       {critique && (

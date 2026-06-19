@@ -34,7 +34,7 @@ export default function App() {
   const [validation, setValidation] = useState<Validation | null>(null);
   const [critique, setCritique] = useState<Critique | null>(null);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
-  const [renderUrl, setRenderUrl] = useState<string | null>(null);
+  const [renderRunId, setRenderRunId] = useState<string | null>(null);
 
   const glbRef = useRef<string | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
@@ -68,7 +68,7 @@ export default function App() {
     setEvents([]);
     setValidation(null);
     setCritique(null);
-    setRenderUrl(null);
+    setRenderRunId(null);
 
     try {
       await runAgent(backend, file, (e) => {
@@ -80,7 +80,7 @@ export default function App() {
         if (e.type === "done") {
           if (e.validation) setValidation(e.validation);
           if (e.critique) setCritique(e.critique);
-          if (e.has_render) setRenderUrl(`${backend}/runs/${e.run_id}/render.png`);
+          if (e.has_render) setRenderRunId(e.run_id);
           if (e.has_glb) {
             fetchGlbObjectUrl(backend, e.run_id)
               .then((url) => {
@@ -167,8 +167,7 @@ export default function App() {
                 setGlbUrl(url);
                 if (run.validation) setValidation(run.validation);
                 if (run.critique) setCritique(run.critique);
-                if (run.has_render)
-                  setRenderUrl(`${backend}/runs/${run.run_id}/render.png`);
+                if (run.has_render) setRenderRunId(run.run_id);
               }}
             />
           </div>
@@ -186,7 +185,12 @@ export default function App() {
           </div>
           <div className="border-t border-slate-800">
             <MetricsPanel validation={validation} />
-            <CritiquePanel critique={critique} originalUrl={previewUrl} renderUrl={renderUrl} />
+            <CritiquePanel
+              critique={critique}
+              originalUrl={previewUrl}
+              backend={backend}
+              renderRunId={renderRunId}
+            />
           </div>
         </aside>
       </main>
