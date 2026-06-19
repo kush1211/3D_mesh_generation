@@ -11,7 +11,7 @@ class AgentState(TypedDict, total=False):
     image_mime: str
 
     # Per-node products
-    plan: Optional[dict[str, Any]]
+    dimensions: Optional[dict[str, Any]]
     code: Optional[str]
     execution: Optional[dict[str, Any]]
     validation: Optional[dict[str, Any]]
@@ -23,4 +23,3 @@ class AgentState(TypedDict, total=False):
     max_iterations: int
     feedback: Optional[str]
     status: str  # "running" | "success" | "failed"
-    stub: bool

@@ -5,9 +5,14 @@ docs (resolve-library-id / query-docs) before writing geometry code.
 """
 from __future__ import annotations
 
+import asyncio
+
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from .. import config
+
+_tools_cache: list | None = None
+_tools_lock = asyncio.Lock()
 
 
 def build_context7_client() -> MultiServerMCPClient:
@@ -26,6 +31,13 @@ def build_context7_client() -> MultiServerMCPClient:
 
 
 async def build_context7_tools():
-    """Return Context7 MCP tools as LangChain tools (async)."""
-    client = build_context7_client()
-    return await client.get_tools()
+    """Return Context7 MCP tools as LangChain tools (cached per process)."""
+    global _tools_cache
+    if _tools_cache is not None:
+        return _tools_cache
+
+    async with _tools_lock:
+        if _tools_cache is None:
+            client = build_context7_client()
+            _tools_cache = await client.get_tools()
+    return _tools_cache

@@ -1,17 +1,5 @@
 // Talks to the FastAPI backend: streams the agent loop and fetches artifacts.
 
-export type Dimensions = { width_m: number; height_m: number; depth_m: number };
-
-export type Plan = {
-  object_type: string;
-  description: string;
-  operations: string[];
-  expected_topology: string;
-  expected_euler: number;
-  dimensions: Dimensions;
-  notes: string;
-};
-
 export type Validation = {
   is_watertight: boolean;
   is_winding_consistent: boolean;
@@ -20,7 +8,7 @@ export type Validation = {
   bounds: number[][];
   extents: number[];
   volume: number;
-  dims_ok: boolean;
+  dims_ok: boolean | null;
   passed: boolean;
 };
 
@@ -38,12 +26,11 @@ export type Execution = {
 };
 
 export type AgentEvent =
-  | { type: "start"; max_iterations: number; stub: boolean }
+  | { type: "start"; max_iterations: number }
   | {
       type: "node";
       node: string;
       iteration?: number;
-      plan?: Plan;
       validation?: Validation;
       critique?: Critique;
       execution?: Execution;
@@ -53,6 +40,7 @@ export type AgentEvent =
     }
   | {
       type: "done";
+      run_id: string;
       status: string;
       iteration?: number;
       validation?: Validation | null;
@@ -65,6 +53,18 @@ export type AgentEvent =
 
 export type Health = { ok: boolean; has_key: boolean; model: string };
 
+export type RunMeta = {
+  run_id: string;
+  filename: string;
+  ts: number;
+  status: string;
+  iteration: number | null;
+  validation: Validation | null;
+  critique: Critique | null;
+  has_glb: boolean;
+  has_render: boolean;
+};
+
 export async function getHealth(backend: string): Promise<Health> {
   const res = await fetch(`${backend}/health`);
   if (!res.ok) throw new Error(`health ${res.status}`);
@@ -75,12 +75,10 @@ export async function getHealth(backend: string): Promise<Health> {
 export async function runAgent(
   backend: string,
   file: File,
-  stub: boolean,
   onEvent: (e: AgentEvent) => void,
 ): Promise<void> {
   const fd = new FormData();
   fd.append("image", file);
-  fd.append("stub", String(stub));
 
   const res = await fetch(`${backend}/run`, { method: "POST", body: fd });
   if (!res.ok || !res.body) throw new Error(`Backend error ${res.status}`);
@@ -114,9 +112,16 @@ export async function runAgent(
 
 // Fetch the exported mesh as a same-origin blob URL (avoids cross-origin
 // loader quirks when the artifact is opened from file://).
-export async function fetchGlbObjectUrl(backend: string): Promise<string> {
-  const res = await fetch(`${backend}/mesh.glb?t=${Date.now()}`);
+export async function fetchGlbObjectUrl(backend: string, runId?: string): Promise<string> {
+  const url = runId ? `${backend}/runs/${runId}/mesh.glb` : `${backend}/mesh.glb?t=${Date.now()}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("no glb");
   const blob = await res.blob();
   return URL.createObjectURL(blob);
+}
+
+export async function listRuns(backend: string): Promise<RunMeta[]> {
+  const res = await fetch(`${backend}/runs`);
+  if (!res.ok) throw new Error(`runs ${res.status}`);
+  return res.json();
 }

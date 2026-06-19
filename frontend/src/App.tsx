@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Boxes, Cpu, Loader2, Play, Wifi, WifiOff } from "lucide-react";
+import { Boxes, Loader2, Play, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { MeshViewer } from "@/components/MeshViewer";
 import { LoopTimeline } from "@/components/LoopTimeline";
 import { MetricsPanel } from "@/components/MetricsPanel";
 import { CritiquePanel } from "@/components/CritiquePanel";
 import { UploadPanel } from "@/components/UploadPanel";
+import { RunsHistory } from "@/components/RunsHistory";
 import {
   runAgent,
   getHealth,
   fetchGlbObjectUrl,
   type AgentEvent,
-  type Plan,
   type Validation,
   type Critique,
   type Health,
+  type RunMeta,
 } from "@/lib/agent";
 
 const DEFAULT_BACKEND = "http://127.0.0.1:8000";
@@ -28,24 +28,22 @@ export default function App() {
 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [stub, setStub] = useState(false);
 
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
-  const [plan, setPlan] = useState<Plan | null>(null);
   const [validation, setValidation] = useState<Validation | null>(null);
   const [critique, setCritique] = useState<Critique | null>(null);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
 
   const glbRef = useRef<string | null>(null);
+  const [historyTick, setHistoryTick] = useState(0);
 
   const checkHealth = useCallback(async () => {
     try {
       const h = await getHealth(backend);
       setHealth(h);
       setHealthErr(false);
-      setStub(!h.has_key); // no key -> stub by default
     } catch {
       setHealth(null);
       setHealthErr(true);
@@ -68,29 +66,28 @@ export default function App() {
     if (!file || running) return;
     setRunning(true);
     setEvents([]);
-    setPlan(null);
     setValidation(null);
     setCritique(null);
     setRenderUrl(null);
 
     try {
-      await runAgent(backend, file, stub, (e) => {
+      await runAgent(backend, file, (e) => {
         setEvents((prev) => [...prev, e]);
         if (e.type === "node") {
-          if (e.plan) setPlan(e.plan);
           if (e.validation) setValidation(e.validation);
           if (e.critique) setCritique(e.critique);
         }
         if (e.type === "done") {
           if (e.validation) setValidation(e.validation);
           if (e.critique) setCritique(e.critique);
-          if (e.has_render) setRenderUrl(`${backend}/render.png?t=${e.ts}`);
+          if (e.has_render) setRenderUrl(`${backend}/runs/${e.run_id}/render.png`);
           if (e.has_glb) {
-            fetchGlbObjectUrl(backend)
+            fetchGlbObjectUrl(backend, e.run_id)
               .then((url) => {
                 if (glbRef.current) URL.revokeObjectURL(glbRef.current);
                 glbRef.current = url;
                 setGlbUrl(url);
+                setHistoryTick((t) => t + 1);
               })
               .catch(() => undefined);
           }
@@ -101,7 +98,7 @@ export default function App() {
     } finally {
       setRunning(false);
     }
-  }, [backend, file, stub, running]);
+  }, [backend, file, running]);
 
   return (
     <div className="flex h-screen flex-col bg-[#0b0e13] text-slate-200">
@@ -139,12 +136,6 @@ export default function App() {
             </span>
           ) : null}
 
-          <label className="flex cursor-pointer items-center gap-2">
-            <Cpu className="h-3.5 w-3.5 text-slate-500" />
-            <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">stub</span>
-            <Switch checked={stub} onCheckedChange={setStub} disabled={running} />
-          </label>
-
           <Button
             onClick={run}
             disabled={!file || running || healthErr}
@@ -166,30 +157,21 @@ export default function App() {
             disabled={running}
             onFile={handleFile}
           />
-          {plan && (
-            <div className="border-t border-slate-800 p-4">
-              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-widest text-slate-300">
-                Plan
-              </h2>
-              <div className="space-y-1.5 text-sm">
-                <div className="text-slate-200">{plan.object_type}</div>
-                <p className="text-[12px] leading-relaxed text-slate-500">{plan.description}</p>
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {plan.operations.map((op) => (
-                    <span
-                      key={op}
-                      className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-300"
-                    >
-                      {op}
-                    </span>
-                  ))}
-                </div>
-                <div className="pt-1 font-mono text-[11px] text-slate-500">
-                  topology: {plan.expected_topology} · euler {plan.expected_euler}
-                </div>
-              </div>
-            </div>
-          )}
+          <div className="border-t border-slate-800">
+            <RunsHistory
+              backend={backend}
+              refreshTrigger={historyTick}
+              onLoad={(url, run: RunMeta) => {
+                if (glbRef.current) URL.revokeObjectURL(glbRef.current);
+                glbRef.current = url;
+                setGlbUrl(url);
+                if (run.validation) setValidation(run.validation);
+                if (run.critique) setCritique(run.critique);
+                if (run.has_render)
+                  setRenderUrl(`${backend}/runs/${run.run_id}/render.png`);
+              }}
+            />
+          </div>
         </aside>
 
         {/* Center viewport */}
@@ -203,7 +185,7 @@ export default function App() {
             <LoopTimeline events={events} running={running} />
           </div>
           <div className="border-t border-slate-800">
-            <MetricsPanel plan={plan} validation={validation} />
+            <MetricsPanel validation={validation} />
             <CritiquePanel critique={critique} originalUrl={previewUrl} renderUrl={renderUrl} />
           </div>
         </aside>

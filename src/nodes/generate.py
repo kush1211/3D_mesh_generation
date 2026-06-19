@@ -1,55 +1,70 @@
 """Generate node: Gemini (with Context7 MCP tools) writes a trimesh script.
 
-In real mode this is a small tool-calling ReAct agent: the model can call
-Context7's resolve-library-id / query-docs to fetch live trimesh API docs
-before/while emitting code. The iteration counter is incremented here.
+The model calls Context7 tools to fetch live trimesh docs until satisfied,
+then emits the final code as structured output (GeneratedCode Pydantic model).
+No regex extraction — the code field is always a clean Python string.
 """
 from __future__ import annotations
 
-import re
-
+from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 
-from .. import config
 from ..llm.mcp import build_context7_tools
 from ..llm.models import build_chat_model
 from ..llm.prompts import GENERATE_SYSTEM, build_generate_prompt
-from .stubs import STUB_CODE
-
-_FENCE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL)
 
 
-def _extract_code(text: str) -> str:
-    """Pull python out of a fenced block if present, else return as-is."""
-    if not isinstance(text, str):
-        # ReAct content can be a list of content blocks.
-        text = "".join(
-            part.get("text", "") if isinstance(part, dict) else str(part)
-            for part in text
-        )
-    matches = _FENCE.findall(text)
-    if matches:
-        return max(matches, key=len).strip()
-    return text.strip()
+class Dimensions(BaseModel):
+    width_m: float = Field(description="Width in meters (X).")
+    height_m: float = Field(description="Height in meters (Z, up).")
+    depth_m: float = Field(description="Depth in meters (Y).")
+
+
+class GeneratedCode(BaseModel):
+    code: str = Field(
+        description=(
+            "Complete, self-contained Python source ready to run as script.py. "
+            "Raw Python only — no markdown fences, no prose, no explanations."
+        ),
+    )
+    dimensions: Dimensions
 
 
 async def generate_node(state: dict) -> dict:
     iteration = state.get("iteration", 0) + 1
 
-    if state.get("stub"):
-        print(f"[generate] (stub) iteration {iteration}: canned box script")
-        return {"iteration": iteration, "code": STUB_CODE}
+    image_block = {
+        "type": "image_url",
+        "image_url": {"url": f"data:{state['image_mime']};base64,{state['image_b64']}"},
+    }
 
     tools = await build_context7_tools()
-    agent = create_react_agent(build_chat_model(), tools)
-    prompt = build_generate_prompt(
-        state["plan"], config.load_trimesh_guide(), state.get("feedback")
+    agent = create_react_agent(
+        build_chat_model(),
+        tools,
+        response_format=GeneratedCode,
     )
+    prompt = build_generate_prompt(state.get("feedback"))
+
     print(f"[generate] iteration {iteration}: querying model (+Context7, {len(tools)} tools)")
     result = await agent.ainvoke(
-        {"messages": [SystemMessage(content=GENERATE_SYSTEM), HumanMessage(content=prompt)]}
+        {
+            "messages": [
+                SystemMessage(content=GENERATE_SYSTEM),
+                HumanMessage(content=[image_block, {"type": "text", "text": prompt}]),
+            ]
+        }
     )
-    code = _extract_code(result["messages"][-1].content)
-    print(f"[generate] produced {len(code)} chars of code")
-    return {"iteration": iteration, "code": code}
+    generated = result.get("structured_response")
+    if not isinstance(generated, GeneratedCode):
+        raise ValueError(
+            "Generate agent did not return structured_response (GeneratedCode). "
+            "The model may have exhausted tool-calling steps without producing code."
+        )
+    print(f"[generate] produced {len(generated.code)} chars of code")
+    return {
+        "iteration": iteration,
+        "code": generated.code,
+        "dimensions": generated.dimensions.model_dump(),
+    }

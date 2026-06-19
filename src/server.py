@@ -1,9 +1,12 @@
 """FastAPI backend that exposes the agent to the frontend.
 
-- POST /run    : upload an image, stream per-node loop progress as NDJSON.
-- GET  /mesh.glb : serve the latest exported mesh.
+- POST /run        : upload an image, stream per-node loop progress as NDJSON.
+- GET  /runs       : list all archived runs (newest first).
+- GET  /runs/{id}/mesh.glb   : fetch a specific run's mesh.
+- GET  /runs/{id}/render.png : fetch a specific run's render.
+- GET  /mesh.glb   : serve the latest exported mesh.
 - GET  /render.png : serve the latest critique render.
-- GET  /health : report readiness and whether a Gemini key is configured.
+- GET  /health     : report readiness and whether a Gemini key is configured.
 
 The graph itself is untouched: this just wraps `graph.astream(...)` and
 serializes each node update into a JSON line the browser can read.
@@ -14,7 +17,25 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+import shutil
 import time
+import traceback
+from pathlib import Path
+
+_LOG_FILE = Path(__file__).resolve().parent.parent / "server.log"
+_LOG_FILE.touch(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(_LOG_FILE, encoding="utf-8"),
+    ],
+)
+log = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +43,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from . import config
 from .graph import build_graph
+
+RUNS_DIR = config.WORKDIR / "runs"
 
 app = FastAPI(title="2D image -> validated 3D mesh agent")
 
@@ -39,7 +62,7 @@ def _summarize(node: str, update: dict) -> dict:
     event: dict = {"type": "node", "node": node}
     if update.get("iteration") is not None:
         event["iteration"] = update["iteration"]
-    for key in ("plan", "validation", "critique"):
+    for key in ("validation", "critique"):
         if update.get(key) is not None:
             event[key] = update[key]
     if update.get("execution") is not None:
@@ -60,13 +83,13 @@ def _summarize(node: str, update: dict) -> dict:
 
 
 @app.post("/run")
-async def run(image: UploadFile = File(...), stub: bool = Form(False)):
+async def run(image: UploadFile = File(...)):
     data = await image.read()
     mime = image.content_type or "image/png"
     b64 = base64.b64encode(data).decode()
-    use_stub = bool(stub) or not config.GEMINI_API_KEY
 
     async def generate():
+        log.info("run started: file=%s", image.filename)
         graph = build_graph()
         initial = {
             "image_path": image.filename or "upload",
@@ -75,10 +98,9 @@ async def run(image: UploadFile = File(...), stub: bool = Form(False)):
             "iteration": 0,
             "max_iterations": config.MAX_ITERATIONS,
             "status": "running",
-            "stub": use_stub,
         }
         yield json.dumps(
-            {"type": "start", "max_iterations": config.MAX_ITERATIONS, "stub": use_stub}
+            {"type": "start", "max_iterations": config.MAX_ITERATIONS}
         ) + "\n"
 
         final_state: dict = {}
@@ -90,10 +112,20 @@ async def run(image: UploadFile = File(...), stub: bool = Form(False)):
                     if not isinstance(update, dict):
                         continue
                     final_state.update(update)
-                    yield json.dumps(_summarize(node, update), default=str) + "\n"
+                    summary = _summarize(node, update)
+                    log.info("node=%s iter=%s status=%s", node, summary.get("iteration"), summary.get("status"))
+                    if summary.get("feedback"):
+                        log.warning("feedback: %s", summary["feedback"][:200])
+                    yield json.dumps(summary, default=str) + "\n"
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI
+            log.error("agent error: %s\n%s", exc, traceback.format_exc())
             yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
             return
+
+        ts = int(time.time())
+        run_id = f"{ts}_{(image.filename or 'upload').replace(' ', '_')}"
+        _archive_run(run_id, image.filename or "upload", final_state, ts)
+        log.info("run done: id=%s status=%s", run_id, final_state.get("status"))
 
         yield json.dumps(
             {
@@ -104,12 +136,68 @@ async def run(image: UploadFile = File(...), stub: bool = Form(False)):
                 "critique": final_state.get("critique"),
                 "has_glb": config.GLB_PATH.exists(),
                 "has_render": config.RENDER_PATH.exists(),
-                "ts": int(time.time()),
+                "run_id": run_id,
+                "ts": ts,
             },
             default=str,
         ) + "\n"
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+
+def _archive_run(run_id: str, filename: str, state: dict, ts: int) -> Path | None:
+    """Copy the finished mesh + render into a timestamped archive folder."""
+    run_dir = RUNS_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    if config.GLB_PATH.exists():
+        shutil.copy2(config.GLB_PATH, run_dir / "mesh.glb")
+    if config.RENDER_PATH.exists():
+        shutil.copy2(config.RENDER_PATH, run_dir / "render.png")
+
+    meta = {
+        "run_id": run_id,
+        "filename": filename,
+        "ts": ts,
+        "status": state.get("status", "failed"),
+        "iteration": state.get("iteration"),
+        "validation": state.get("validation"),
+        "critique": state.get("critique"),
+    }
+    (run_dir / "meta.json").write_text(json.dumps(meta, default=str), encoding="utf-8")
+    return run_dir
+
+
+@app.get("/runs")
+async def list_runs():
+    if not RUNS_DIR.exists():
+        return []
+    runs = []
+    for run_dir in sorted(RUNS_DIR.iterdir(), reverse=True):
+        meta_file = run_dir / "meta.json"
+        if not meta_file.exists():
+            continue
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        meta["has_glb"] = (run_dir / "mesh.glb").exists()
+        meta["has_render"] = (run_dir / "render.png").exists()
+        runs.append(meta)
+    return runs
+
+
+@app.get("/runs/{run_id}/mesh.glb")
+async def run_mesh(run_id: str):
+    path = RUNS_DIR / run_id / "mesh.glb"
+    if not path.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path, media_type="model/gltf-binary", filename="mesh.glb")
+
+
+@app.get("/runs/{run_id}/render.png")
+async def run_render(run_id: str):
+    path = RUNS_DIR / run_id / "render.png"
+    if not path.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/mesh.glb")

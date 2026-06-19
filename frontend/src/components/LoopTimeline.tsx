@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import {
-  Brain,
   Code2,
   Play,
   ShieldCheck,
@@ -13,8 +12,7 @@ import {
 } from "lucide-react";
 import type { AgentEvent } from "@/lib/agent";
 
-const NODE_META: Record<string, { label: string; Icon: typeof Brain }> = {
-  plan: { label: "Plan", Icon: Brain },
+const NODE_META: Record<string, { label: string; Icon: typeof Code2 }> = {
   generate: { label: "Generate code", Icon: Code2 },
   execute: { label: "Execute", Icon: Play },
   validate: { label: "Validate", Icon: ShieldCheck },
@@ -22,7 +20,7 @@ const NODE_META: Record<string, { label: string; Icon: typeof Brain }> = {
   finalize: { label: "Finalize", Icon: Flag },
 };
 
-type Row = { key: string; label: string; Icon: typeof Brain; detail: string; tone: Tone; iter?: number };
+type Row = { key: string; label: string; Icon: typeof Code2; detail: string; tone: Tone; iter?: number };
 type Tone = "ok" | "fail" | "info" | "warn";
 
 const TONE: Record<Tone, string> = {
@@ -36,7 +34,7 @@ function rowFor(e: AgentEvent, i: number): Row | null {
   if (e.type === "start")
     return {
       key: `s${i}`,
-      label: e.stub ? "Run started (stub mode)" : "Run started",
+      label: "Run started",
       Icon: CircleDot,
       detail: `max ${e.max_iterations} iterations`,
       tone: "info",
@@ -57,9 +55,7 @@ function rowFor(e: AgentEvent, i: number): Row | null {
 
   let detail = "";
   let tone: Tone = "info";
-  if (e.node === "plan" && e.plan) {
-    detail = `${e.plan.object_type} · ${e.plan.operations.join(", ")}`;
-  } else if (e.node === "generate") {
+  if (e.node === "generate") {
     detail = `${e.code_len ?? 0} chars of trimesh code`;
   } else if (e.node === "execute" && e.execution) {
     tone = e.execution.ok ? "ok" : "fail";
@@ -67,7 +63,7 @@ function rowFor(e: AgentEvent, i: number): Row | null {
   } else if (e.node === "validate" && e.validation) {
     tone = e.validation.passed ? "ok" : "fail";
     detail = e.validation.passed
-      ? "watertight ✓ winding ✓ dims ✓"
+      ? "watertight ✓ winding ✓"
       : "validation failed — see metrics";
   } else if (e.node === "critique" && e.critique) {
     tone = e.critique.matches ? "ok" : "warn";
@@ -98,7 +94,7 @@ export function LoopTimeline({ events, running }: { events: AgentEvent[]; runnin
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {rows.length === 0 && (
           <p className="px-2 py-6 text-center font-mono text-xs text-slate-600">
-            run the agent to trace plan → generate → execute → validate → critique
+            run the agent to trace generate → execute → validate → critique
           </p>
         )}
         <ol className="relative">
@@ -120,7 +116,10 @@ export function LoopTimeline({ events, running }: { events: AgentEvent[]; runnin
                     )}
                   </div>
                   {r.detail && (
-                    <p className="truncate font-mono text-[11px] text-slate-500" title={r.detail}>
+                    <p
+                      className={`font-mono text-[11px] ${r.tone === "fail" ? "whitespace-pre-wrap break-words text-rose-400/80" : "truncate text-slate-500"}`}
+                      title={r.detail}
+                    >
                       {r.detail}
                     </p>
                   )}

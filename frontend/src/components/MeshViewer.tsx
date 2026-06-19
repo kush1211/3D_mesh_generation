@@ -6,7 +6,12 @@ import { Box } from "lucide-react";
 
 function Model({ url }: { url: string }) {
   const gltf = useLoader(GLTFLoader, url);
-  return <primitive object={gltf.scene} />;
+  // Trimesh exports Z-up geometry; Three.js / glTF viewers use Y-up.
+  return (
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      <primitive object={gltf.scene} />
+    </group>
+  );
 }
 
 export function MeshViewer({ glbUrl }: { glbUrl: string | null }) {
