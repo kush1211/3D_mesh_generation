@@ -35,6 +35,7 @@ export default function App() {
   const [critique, setCritique] = useState<Critique | null>(null);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [renderRunId, setRenderRunId] = useState<string | null>(null);
+  const [runToken, setRunToken] = useState(0);
 
   const glbRef = useRef<string | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
@@ -69,6 +70,7 @@ export default function App() {
     setValidation(null);
     setCritique(null);
     setRenderRunId(null);
+    setRunToken(Date.now());
 
     try {
       await runAgent(backend, file, (e) => {
@@ -181,7 +183,12 @@ export default function App() {
         {/* Right rail */}
         <aside className="flex min-h-0 flex-col overflow-y-auto border-l border-slate-800">
           <div className="min-h-[220px] flex-1">
-            <LoopTimeline events={events} running={running} />
+            <LoopTimeline
+              events={events}
+              running={running}
+              backend={backend}
+              runToken={runToken}
+            />
           </div>
           <div className="border-t border-slate-800">
             <MetricsPanel validation={validation} />

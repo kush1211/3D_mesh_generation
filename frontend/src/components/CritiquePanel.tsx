@@ -66,13 +66,26 @@ export function CritiquePanel({
           >
             {critique.matches ? "match" : "no match"}
           </div>
-          {critique.reasons && critique.reasons !== "stub" && (
-            <p className="text-[12px] leading-relaxed text-slate-400">{critique.reasons}</p>
+          {[
+            { label: "Shape", value: critique.shape },
+            { label: "Parts", value: critique.parts },
+            { label: "Orientation", value: critique.orientation },
+          ].map(
+            ({ label, value }) =>
+              value &&
+              value !== "stub" && (
+                <p key={label} className="text-[12px] leading-relaxed text-slate-400">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    {label}:{" "}
+                  </span>
+                  {value}
+                </p>
+              ),
           )}
-          {!critique.matches && critique.suggested_fixes && (
+          {!critique.matches && critique.suggested_changes && (
             <p className="text-[12px] leading-relaxed text-slate-500">
-              <span className="text-slate-400">Fixes: </span>
-              {critique.suggested_fixes}
+              <span className="text-slate-400">What to change: </span>
+              {critique.suggested_changes}
             </p>
           )}
         </div>

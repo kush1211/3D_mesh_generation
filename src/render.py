@@ -23,19 +23,38 @@ _CRITIQUE_VIEWS: tuple[tuple[int, int, str], ...] = (
 PRIMARY_VIEW_INDEX = 1
 
 
-def _prepare_display_mesh(glb_path: str):
-    """Z-up trimesh geometry → Y-up, floor-aligned, centered on XZ."""
+def _prepare_display_mesh(glb_path: str, up: str = "y"):
+    """Load the mesh, floor-align it, and center it horizontally.
+
+    The generated geometry is **Z-up** (revolve/extrude build along Z). The two
+    renderers disagree on which axis is up, so the caller picks:
+
+    - ``up="z"`` (matplotlib, whose vertical axis is Z): keep the native Z-up
+      orientation so the object stands upright; floor on Z, center on XY.
+    - ``up="y"`` (trimesh.Scene / OpenGL, which is Y-up): rotate Z-up → Y-up;
+      floor on Y, center on XZ.
+
+    Rendering a Z-up mesh in a Z-up world (or Y-up in Y-up) keeps it upright;
+    mixing the two is what made earlier renders come out lying on their side.
+    """
     import numpy as np
     import trimesh
     from trimesh.transformations import rotation_matrix
 
     mesh = trimesh.load(glb_path, force="mesh")
     mesh = mesh.copy()
-    mesh.apply_transform(rotation_matrix(-np.pi / 2, [1, 0, 0]))
-    mesh.vertices[:, 1] -= mesh.bounds[0][1]
-    cx, _, cz = mesh.centroid
-    mesh.vertices[:, 0] -= cx
-    mesh.vertices[:, 2] -= cz
+
+    if up == "y":
+        mesh.apply_transform(rotation_matrix(-np.pi / 2, [1, 0, 0]))
+        mesh.vertices[:, 1] -= mesh.bounds[0][1]  # floor on Y
+        cx, _, cz = mesh.centroid
+        mesh.vertices[:, 0] -= cx
+        mesh.vertices[:, 2] -= cz
+    else:  # up == "z" — native, matplotlib-friendly
+        mesh.vertices[:, 2] -= mesh.bounds[0][2]  # floor on Z
+        cx, cy, _ = mesh.centroid
+        mesh.vertices[:, 0] -= cx
+        mesh.vertices[:, 1] -= cy
     return mesh
 
 
@@ -71,7 +90,7 @@ def _render_matplotlib_views(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    mesh = _prepare_display_mesh(glb_path)
+    mesh = _prepare_display_mesh(glb_path, up="z")  # matplotlib vertical axis is Z
     paths: list[str] = []
     for i, (elev, azim, _) in enumerate(_CRITIQUE_VIEWS):
         fig = plt.figure(figsize=(resolution[0] / 100, resolution[1] / 100), dpi=100)

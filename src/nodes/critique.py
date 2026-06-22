@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import config
 from ..llm.models import build_chat_model
@@ -17,9 +17,45 @@ from ..render import PRIMARY_VIEW_INDEX, render_mesh_views, view_labels
 
 
 class Critique(BaseModel):
-    matches: bool
-    reasons: str
-    suggested_fixes: str = ""
+    matches: bool = Field(
+        description=(
+            "True ONLY if the reconstructed mesh plausibly matches the product's "
+            "overall shape, parts, proportions, AND orientation. If anything is "
+            "clearly wrong, set this to False."
+        )
+    )
+    shape: str = Field(
+        description=(
+            "Plain-language assessment of the overall silhouette and proportions "
+            "versus the product: is the body the right form, and is it too tall, "
+            "short, wide, or narrow? Describe what you see."
+        )
+    )
+    parts: str = Field(
+        description=(
+            "Plain-language assessment of the structural parts: which expected "
+            "parts are present, missing, or extra, and whether parts that should "
+            "be joined look properly connected or instead detached, floating, or "
+            "separated by a gap (e.g. a mug handle that does not meet the body)."
+        )
+    )
+    orientation: str = Field(
+        description=(
+            "Plain-language assessment of the product's orientation: is it the "
+            "right way up (standing upright, not lying on its side or upside "
+            "down), is it tilted, and do asymmetric features such as a handle, "
+            "spout, or opening face the correct direction?"
+        )
+    )
+    suggested_changes: str = Field(
+        default="",
+        description=(
+            "Concrete, plain-language description of what should change about the "
+            "shape, size, placement, or orientation to better match the product. "
+            "Describe WHAT to change — never name any code, library, function, or "
+            "technical operation."
+        ),
+    )
 
 
 def _mesh_metrics_text(state: dict) -> str:
@@ -66,6 +102,7 @@ async def critique_node(state: dict) -> dict:
         print(f"[critique] {msg}")
         return {
             "render_path": None,
+            "render_paths": None,
             "critique": {"matches": False, "reasons": msg, "suggested_fixes": ""},
             "feedback": msg,
         }
@@ -101,9 +138,20 @@ async def critique_node(state: dict) -> dict:
     ]
     critique: Critique = await model.ainvoke(messages)
     c = critique.model_dump()
-    print(f"[critique] matches={c['matches']}: {c['reasons'][:100]}")
+    print(f"[critique] matches={c['matches']}: {c['shape'][:100]}")
     feedback = None
     if not c["matches"]:
-        feedback = f"Visual critique (does not match):\n{c['reasons']}\nFixes: {c['suggested_fixes']}"
+        feedback = (
+            "Visual critique — the mesh does NOT match the product. Problems:\n"
+            f"- Shape & proportions: {c['shape']}\n"
+            f"- Parts & structure: {c['parts']}\n"
+            f"- Orientation: {c['orientation']}\n"
+            f"- What to change: {c['suggested_changes']}"
+        )
     primary_path = render_paths[PRIMARY_VIEW_INDEX]
-    return {"render_path": primary_path, "critique": c, "feedback": feedback}
+    return {
+        "render_path": primary_path,
+        "render_paths": render_paths,
+        "critique": c,
+        "feedback": feedback,
+    }

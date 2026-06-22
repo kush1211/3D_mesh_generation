@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { AgentEvent } from "@/lib/agent";
+import { CRITIQUE_VIEW_LABELS, liveRenderViewUrl } from "@/lib/agent";
 
 const NODE_META: Record<string, { label: string; Icon: typeof Code2 }> = {
   generate: { label: "Generate code", Icon: Code2 },
@@ -20,7 +21,16 @@ const NODE_META: Record<string, { label: string; Icon: typeof Code2 }> = {
   finalize: { label: "Finalize", Icon: Flag },
 };
 
-type Row = { key: string; label: string; Icon: typeof Code2; detail: string; tone: Tone; iter?: number };
+type Row = {
+  key: string;
+  label: string;
+  Icon: typeof Code2;
+  detail: string;
+  tone: Tone;
+  iter?: number;
+  renderViews?: number;
+  idx?: number; // event index, used as a cache-bust seed for live renders
+};
 type Tone = "ok" | "fail" | "info" | "warn";
 
 const TONE: Record<Tone, string> = {
@@ -72,10 +82,29 @@ function rowFor(e: AgentEvent, i: number): Row | null {
     tone = e.status === "success" ? "ok" : "fail";
     detail = `status: ${e.status}`;
   }
-  return { key: `n${i}`, label: meta.label, Icon: meta.Icon, detail, tone, iter: e.iteration };
+  return {
+    key: `n${i}`,
+    label: meta.label,
+    Icon: meta.Icon,
+    detail,
+    tone,
+    iter: e.iteration,
+    renderViews: e.type === "node" ? e.render_views : undefined,
+    idx: i,
+  };
 }
 
-export function LoopTimeline({ events, running }: { events: AgentEvent[]; running: boolean }) {
+export function LoopTimeline({
+  events,
+  running,
+  backend,
+  runToken,
+}: {
+  events: AgentEvent[];
+  running: boolean;
+  backend: string;
+  runToken: number;
+}) {
   const rows = events.map(rowFor).filter(Boolean) as Row[];
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -123,6 +152,26 @@ export function LoopTimeline({ events, running }: { events: AgentEvent[]; runnin
                       {r.detail}
                     </p>
                   )}
+                  {r.renderViews ? (
+                    <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1">
+                      {Array.from({ length: r.renderViews }, (_, v) => (
+                        <figure
+                          key={v}
+                          className="w-16 shrink-0 overflow-hidden rounded border border-slate-800 bg-slate-900/60"
+                        >
+                          <div className="truncate border-b border-slate-800 px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider text-slate-500">
+                            {CRITIQUE_VIEW_LABELS[v] ?? `view ${v + 1}`}
+                          </div>
+                          <img
+                            src={liveRenderViewUrl(backend, v, `${runToken}_${r.idx}`)}
+                            alt={CRITIQUE_VIEW_LABELS[v] ?? `view ${v + 1}`}
+                            className="aspect-square w-full object-contain"
+                            loading="lazy"
+                          />
+                        </figure>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </li>
             );

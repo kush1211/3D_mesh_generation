@@ -14,8 +14,10 @@ export type Validation = {
 
 export type Critique = {
   matches: boolean;
-  reasons: string;
-  suggested_fixes: string;
+  shape: string;
+  parts: string;
+  orientation: string;
+  suggested_changes: string;
 };
 
 export type Execution = {
@@ -35,6 +37,7 @@ export type AgentEvent =
       critique?: Critique;
       execution?: Execution;
       code_len?: number;
+      render_views?: number;
       feedback?: string;
       status?: string;
     }
@@ -77,6 +80,12 @@ export const CRITIQUE_VIEW_LABELS = [
 
 export function runRenderViewUrl(backend: string, runId: string, index: number): string {
   return `${backend}/runs/${runId}/render_${index}.png`;
+}
+
+// Live critique view served from the workdir during a run. `token` must be
+// unique per run+row (the workdir files are overwritten each iteration).
+export function liveRenderViewUrl(backend: string, index: number, token: string): string {
+  return `${backend}/render_${index}.png?t=${token}`;
 }
 
 export async function getHealth(backend: string): Promise<Health> {

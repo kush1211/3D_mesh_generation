@@ -17,6 +17,7 @@ class AgentState(TypedDict, total=False):
     validation: Optional[dict[str, Any]]
     critique: Optional[dict[str, Any]]
     render_path: Optional[str]
+    render_paths: Optional[list[str]]  # all critique view renders of the current mesh
 
     # Loop control
     iteration: int

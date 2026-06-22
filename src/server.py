@@ -75,6 +75,8 @@ def _summarize(node: str, update: dict) -> dict:
         }
     if update.get("code"):
         event["code_len"] = len(update["code"])
+    if update.get("render_paths"):
+        event["render_views"] = len(update["render_paths"])
     if update.get("feedback"):
         event["feedback"] = update["feedback"]
     if update.get("status"):
@@ -224,6 +226,16 @@ async def render_png():
     if not config.RENDER_PATH.exists():
         return JSONResponse({"error": "no render yet"}, status_code=404)
     return FileResponse(config.RENDER_PATH, media_type="image/png")
+
+
+@app.get("/render_{idx}.png")
+async def render_view(idx: int):
+    """Serve a single live critique view from the workdir (overwritten each
+    iteration). The frontend cache-busts per run+row to keep the right image."""
+    path = config.WORKDIR / f"render_{idx}.png"
+    if not path.exists():
+        return JSONResponse({"error": "no render yet"}, status_code=404)
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/health")

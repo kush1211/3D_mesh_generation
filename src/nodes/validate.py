@@ -37,7 +37,12 @@ def validate_node(state: dict) -> dict:
             execution.get("stderr") or "(none)"
         )
         print("[validate] FAILED: no glb")
-        return {"validation": {"passed": False, "errors": errors}, "feedback": errors}
+        # No mesh exists, so there is nothing to render for the retry.
+        return {
+            "validation": {"passed": False, "errors": errors},
+            "feedback": errors,
+            "render_paths": None,
+        }
 
     import trimesh
 
@@ -46,7 +51,11 @@ def validate_node(state: dict) -> dict:
     except Exception as exc:  # noqa: BLE001
         errors = f"Could not load exported mesh: {exc}"
         print(f"[validate] FAILED: {errors}")
-        return {"validation": {"passed": False, "errors": errors}, "feedback": errors}
+        return {
+            "validation": {"passed": False, "errors": errors},
+            "feedback": errors,
+            "render_paths": None,
+        }
 
     extents = (mesh.bounds[1] - mesh.bounds[0]).tolist()
     checks = {
@@ -85,4 +94,20 @@ def validate_node(state: dict) -> dict:
     print(f"[validate] {'PASSED' if passed else 'FAILED'} "
           f"(watertight={checks['is_watertight']}, winding={checks['is_winding_consistent']}, "
           f"euler={checks['euler_number']}, dims_ok={checks['dims_ok']})")
-    return {"validation": checks, "feedback": feedback}
+
+    result: dict = {"validation": checks, "feedback": feedback}
+    if not passed:
+        # The mesh exists but is flawed — render it so the next generate attempt
+        # can see what it built, not just read the validation errors. (When the
+        # mesh is valid, critique renders it instead.)
+        from ..render import render_mesh_views
+
+        try:
+            render_paths = render_mesh_views(
+                execution["glb_path"], config.WORKDIR, config.RENDER_PATH
+            )
+        except Exception as exc:  # noqa: BLE001 - render is best-effort
+            render_paths = []
+            print(f"[validate] could not render failed mesh: {exc}")
+        result["render_paths"] = render_paths or None
+    return result

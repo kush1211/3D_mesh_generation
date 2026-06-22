@@ -8,30 +8,30 @@ An autonomous agent that converts a single 2D product image into a validated, wa
 
 ## Commands
 
-Setup and run (the README uses PowerShell paths; on this Linux machine use `.venv/bin/python`):
+Setup and run (Windows / PowerShell — the venv interpreter is `.venv\Scripts\python.exe`):
 
-```bash
+```powershell
 python -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-cp .env.example .env   # then set GEMINI_API_KEY
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env   # then set GEMINI_API_KEY
 
 # Full pipeline (needs GEMINI_API_KEY):
-.venv/bin/python -m src.main path/to/product.jpg
+.venv\Scripts\python.exe -m src.main path\to\product.jpg
 
 # Stub mode — exercises the whole graph end-to-end with NO API calls:
-.venv/bin/python -m src.main sample.png --stub
+.venv\Scripts\python.exe -m src.main sample.png --stub
 ```
 
 `src.main` auto-falls back to `--stub` when `GEMINI_API_KEY` is unset, so the graph always runs. Outputs land in `workdir/`: `script.py`, `mesh.glb`, `render.png` (gitignored).
 
 Backend + frontend:
 
-```bash
-.venv/bin/python -m src.server        # FastAPI agent at http://127.0.0.1:8000
-cd frontend && pnpm install && pnpm dev   # Vite UI at http://localhost:5173
+```powershell
+.venv\Scripts\python.exe -m src.server   # FastAPI agent at http://127.0.0.1:8000
+cd frontend; pnpm install; pnpm dev       # Vite UI at http://localhost:5173
 # or open frontend/bundle.html (a prebuilt single-file artifact) with the backend running
-cd frontend && pnpm build             # tsc -b && vite build
-cd frontend && pnpm lint              # eslint
+cd frontend; pnpm build                   # tsc -b && vite build
+cd frontend; pnpm lint                    # eslint
 ```
 
 There is **no Python test suite** despite `.pytest_cache/` in `.gitignore`. Stub mode is the de-facto end-to-end smoke test.
