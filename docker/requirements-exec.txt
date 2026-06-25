@@ -1,0 +1,4 @@
+trimesh
+manifold3d
+pymeshfix
+shapely

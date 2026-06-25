@@ -1,15 +1,15 @@
 """Execute node: run the generated script via the pluggable Executor.
 
-Depends ONLY on the Executor interface — swap SubprocessExecutor for a
-DockerExecutor later without touching this node.
+Depends ONLY on the Executor interface — swap the bound Executor without
+touching this node.
 """
 from __future__ import annotations
 
 from .. import config
-from ..execution import Executor, SubprocessExecutor
+from ..execution import DockerExecutor, Executor
 
 # Bound here, not inside the node, so the swap point is a single line.
-_EXECUTOR: Executor = SubprocessExecutor()
+_EXECUTOR: Executor = DockerExecutor()
 
 
 def execute_node(state: dict) -> dict:

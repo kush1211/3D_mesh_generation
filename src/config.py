@@ -29,6 +29,10 @@ CONTEXT7_API_KEY = os.getenv("CONTEXT7_API_KEY")  # optional (higher rate limits
 # --- Loop control ----------------------------------------------------------
 MAX_ITERATIONS = 4
 EXEC_TIMEOUT_S = 120
+DOCKER_EXEC_IMAGE = os.getenv("DOCKER_EXEC_IMAGE", "mesh-exec:latest")
+DOCKER_EXEC_MEMORY = os.getenv("DOCKER_EXEC_MEMORY", "512m")
+DOCKER_EXEC_CPUS = float(os.getenv("DOCKER_EXEC_CPUS", "1.0"))
+DOCKER_EXEC_PIDS_LIMIT = int(os.getenv("DOCKER_EXEC_PIDS_LIMIT", "128"))
 # Relative tolerance when comparing rendered bbox extents to planned meters.
 BBOX_REL_TOLERANCE = 0.5
 # Pixel size for each critique render (five views written as render_0.png …).
